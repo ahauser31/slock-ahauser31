@@ -30,7 +30,7 @@ slock: ${OBJ}
 
 clean:
 	@echo cleaning
-	@rm -f slock ${OBJ} slock-${VERSION}.tar.gz
+	@rm -f slock ${OBJ} slock-${VERSION}.tar.gz config.h
 
 dist: clean
 	@echo creating dist tarball
@@ -40,6 +40,9 @@ dist: clean
 	@tar -cf slock-${VERSION}.tar slock-${VERSION}
 	@gzip slock-${VERSION}.tar
 	@rm -rf slock-${VERSION}
+
+build: options clean slock
+	@echo building...
 
 install: all
 	@echo installing executable file to ${DESTDIR}${PREFIX}/bin
@@ -58,4 +61,4 @@ uninstall:
 	@echo removing manual page from ${DESTDIR}${MANPREFIX}/man1
 	@rm -f ${DESTDIR}${MANPREFIX}/man1/slock.1
 
-.PHONY: all options clean dist install uninstall
+.PHONY: all options clean dist install uninstall build

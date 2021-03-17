@@ -19,11 +19,13 @@
 #include <X11/keysym.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xft/Xft.h>
 
 #include "arg.h"
 #include "util.h"
 
 char *argv0;
+XftFont* font;
 
 /* global count to prevent repeated error messages */
 int count_error = 0;
@@ -86,6 +88,66 @@ dontkillme(void)
 	}
 }
 #endif
+
+static void
+loadfont(char* fontstr, Display* dpy)
+{
+	FcPattern* pattern;
+	FcPattern* match;
+	FcResult result;
+
+	if (!FcInit())
+		die("could not init fontconfig.\n");
+
+	pattern = FcNameParse((FcChar8*)fontstr);
+
+	if (!pattern)
+		die("can't open font %s\n", fontstr);
+
+	match = FcFontMatch(NULL, pattern, &result);
+	if (!match) {
+		FcPatternDestroy(pattern);
+		die("can't open font %s\n", fontstr);
+	}
+
+	if (!(font = XftFontOpenPattern(dpy, match))) {
+		FcPatternDestroy(pattern);
+		FcPatternDestroy(match);
+		die("can't open font %s\n", fontstr);
+	}
+
+	FcPatternDestroy(pattern);
+	FcPatternDestroy(match);
+}
+
+static void
+unloadfont(Display* dpy)
+{
+	XftFontClose(dpy, font);
+}
+
+static void
+writemsg(Display *dpy, Window win, int screen)
+{
+	XftDraw* drawable;
+	XRenderColor xrcolor;
+	XftColor xftcolor;
+
+	drawable = XftDrawCreate(dpy, win, DefaultVisual(dpy, 0), DefaultColormap(dpy, 0));
+
+	xrcolor.red = 65535;
+	xrcolor.green = 65535;
+	xrcolor.blue = 65535;
+	xrcolor.alpha = 65535;
+
+	XftColorAllocValue(dpy, DefaultVisual(dpy, 0), DefaultColormap(dpy, 0), &xrcolor, &xftcolor);
+
+	XftDrawString8(drawable, &xftcolor, font, 0, 40, (unsigned char*)message, strlen(message));
+
+	XftColorFree(dpy, DefaultVisual(dpy, 0), DefaultColormap(dpy, 0), &xftcolor);
+
+	XftDrawDestroy(drawable);
+}
 
 static void
 writemessage(Display *dpy, Window win, int screen)
@@ -291,6 +353,7 @@ readpw(Display *dpy, struct xrandr *rr, struct lock **locks, int nscreens,
 					                     locks[screen]->colors[color]);
 					XClearWindow(dpy, locks[screen]->win);
 					writemessage(dpy, locks[screen]->win, screen);
+					writemsg(dpy, locks[screen]->win, screen);
 				}
 				oldc = color;
 			}
@@ -457,6 +520,9 @@ main(int argc, char **argv) {
 	if (!(dpy = XOpenDisplay(NULL)))
 		die("slock: cannot open display\n");
 
+	/* Initialize font */
+	loadfont(font_n, dpy);
+
 	/* drop privileges */
 	if (setgroups(0, NULL) < 0)
 		die("slock: setgroups: %s\n", strerror(errno));
@@ -475,6 +541,7 @@ main(int argc, char **argv) {
 	for (nlocks = 0, s = 0; s < nscreens; s++) {
 		if ((locks[s] = lockscreen(dpy, &rr, s)) != NULL) {
 			writemessage(dpy, locks[s]->win, s);
+			writemsg(dpy, locks[s]->win, s);
 			nlocks++;
 		} else {
 			break;
@@ -502,6 +569,9 @@ main(int argc, char **argv) {
 
 	/* everything is now blank. Wait for the correct password */
 	readpw(dpy, &rr, locks, nscreens, hash);
+
+	/* unload font */
+	unloadfont(dpy);
 
 	return 0;
 }
